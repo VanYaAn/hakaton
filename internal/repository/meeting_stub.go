@@ -6,28 +6,28 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hakaton/meeting-bot/internal/domain"
+	"github.com/hakaton/meeting-bot/internal/models"
 )
 
 // MeetingRepositoryStub is an in-memory stub implementation
 type MeetingRepositoryStub struct {
 	mu           sync.RWMutex
-	meetings     map[int64]*domain.Meeting
-	participants map[int64][]*domain.MeetingParticipant
-	timeSlots    map[int64][]*domain.TimeSlot
+	meetings     map[int64]*models.Meeting
+	participants map[int64][]*models.MeetingParticipant
+	timeSlots    map[int64][]*models.TimeSlot
 	nextID       int64
 }
 
 func NewMeetingRepositoryStub() *MeetingRepositoryStub {
 	return &MeetingRepositoryStub{
-		meetings:     make(map[int64]*domain.Meeting),
-		participants: make(map[int64][]*domain.MeetingParticipant),
-		timeSlots:    make(map[int64][]*domain.TimeSlot),
+		meetings:     make(map[int64]*models.Meeting),
+		participants: make(map[int64][]*models.MeetingParticipant),
+		timeSlots:    make(map[int64][]*models.TimeSlot),
 		nextID:       1,
 	}
 }
 
-func (r *MeetingRepositoryStub) Create(ctx context.Context, meeting *domain.Meeting) error {
+func (r *MeetingRepositoryStub) Create(ctx context.Context, meeting *models.Meeting) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -40,7 +40,7 @@ func (r *MeetingRepositoryStub) Create(ctx context.Context, meeting *domain.Meet
 	return nil
 }
 
-func (r *MeetingRepositoryStub) GetByID(ctx context.Context, id int64) (*domain.Meeting, error) {
+func (r *MeetingRepositoryStub) GetByID(ctx context.Context, id int64) (*models.Meeting, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -51,7 +51,7 @@ func (r *MeetingRepositoryStub) GetByID(ctx context.Context, id int64) (*domain.
 	return meeting, nil
 }
 
-func (r *MeetingRepositoryStub) Update(ctx context.Context, meeting *domain.Meeting) error {
+func (r *MeetingRepositoryStub) Update(ctx context.Context, meeting *models.Meeting) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -74,7 +74,7 @@ func (r *MeetingRepositoryStub) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *MeetingRepositoryStub) AddParticipant(ctx context.Context, participant *domain.MeetingParticipant) error {
+func (r *MeetingRepositoryStub) AddParticipant(ctx context.Context, participant *models.MeetingParticipant) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -83,18 +83,18 @@ func (r *MeetingRepositoryStub) AddParticipant(ctx context.Context, participant 
 	return nil
 }
 
-func (r *MeetingRepositoryStub) GetParticipants(ctx context.Context, meetingID int64) ([]*domain.MeetingParticipant, error) {
+func (r *MeetingRepositoryStub) GetParticipants(ctx context.Context, meetingID int64) ([]*models.MeetingParticipant, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	participants := r.participants[meetingID]
 	if participants == nil {
-		return []*domain.MeetingParticipant{}, nil
+		return []*models.MeetingParticipant{}, nil
 	}
 	return participants, nil
 }
 
-func (r *MeetingRepositoryStub) AddTimeSlot(ctx context.Context, slot *domain.TimeSlot) error {
+func (r *MeetingRepositoryStub) AddTimeSlot(ctx context.Context, slot *models.TimeSlot) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -102,13 +102,13 @@ func (r *MeetingRepositoryStub) AddTimeSlot(ctx context.Context, slot *domain.Ti
 	return nil
 }
 
-func (r *MeetingRepositoryStub) GetTimeSlots(ctx context.Context, meetingID int64) ([]*domain.TimeSlot, error) {
+func (r *MeetingRepositoryStub) GetTimeSlots(ctx context.Context, meetingID int64) ([]*models.TimeSlot, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	slots := r.timeSlots[meetingID]
 	if slots == nil {
-		return []*domain.TimeSlot{}, nil
+		return []*models.TimeSlot{}, nil
 	}
 	return slots, nil
 }

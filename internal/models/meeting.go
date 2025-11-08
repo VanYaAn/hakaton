@@ -1,4 +1,4 @@
-package domain
+package models
 
 import "time"
 
@@ -12,6 +12,7 @@ const (
 
 type Meeting struct {
 	ID          int64
+	ChatID      int64
 	Title       string
 	OrganizerID int64
 	Status      MeetingStatus
@@ -37,6 +38,6 @@ type Vote struct {
 	MeetingID  int64
 	UserID     int64
 	TimeSlotID int64
-	Approved   bool // true for ✅, false for 👎
+	Approved   bool
 	CreatedAt  time.Time
 }

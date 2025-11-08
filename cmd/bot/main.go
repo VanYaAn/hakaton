@@ -2,143 +2,140 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/hakaton/meeting-bot/internal/bot"
 	"github.com/hakaton/meeting-bot/internal/config"
-	"github.com/hakaton/meeting-bot/internal/handler"
-
-	// "github.com/hakaton/meeting-bot/internal/handler"
 	"github.com/hakaton/meeting-bot/internal/repository"
-	"github.com/hakaton/meeting-bot/internal/server"
-	"github.com/hakaton/meeting-bot/internal/service"
+	"github.com/hakaton/meeting-bot/internal/services"
 	"github.com/hakaton/meeting-bot/pkg/logger"
 )
 
 func main() {
-	logger := logger.NewLogger(true)
-	logger.InfoS("Starting Meeting Bot...")
+	// Initialize logger
+	log := logger.NewLogger(true)
+	log.InfoS("Starting Meeting Bot...")
 
 	// Load configuration
 	cfg := config.Load()
-	logger.InfoS("Configuration loaded",
+	log.InfoS("Configuration loaded",
 		"server_port", cfg.ServerPort,
 		"max_api_url", cfg.MaxAPIBaseURL,
 		"voting_duration", cfg.VotingDuration,
 	)
 
-	// Initialize dependencies using Dependency Injection
-	container := initContainer(logger, cfg)
+	// Validate bot token
+	if cfg.BotToken == "" {
+		log.ErrorS("BOT_TOKEN environment variable is not set")
+		os.Exit(1)
+	}
 
-	// Create context for application
+	// Initialize dependency container
+	container := initContainer(log, cfg)
+	log.InfoS("Dependency container initialized")
+
+	// Create application context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	token := os.Getenv("BOT_TOKEN")
-	if token == "" {
-		fmt.Fprintln(os.Stderr, "Ошибка: переменная окружения TOKEN не установлена")
+	// Start bot
+	if err := container.Bot.Run(ctx); err != nil {
+		log.ErrorS("Bot stopped with error", "error", err)
 		os.Exit(1)
 	}
-
-	// Запускаем бота
-	if err := handler.RunBot(token, ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "Бот завершил работу с ошибкой: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Start HTTP server in goroutine
-	go startHTTPServer(ctx, logger, container, cfg)
 
 	// Wait for shutdown signal
-	waitForShutdown(cancel)
+	waitForShutdown(log, cancel, container)
 
-	logger.InfoS("Meeting Bot stopped")
+	log.InfoS("Meeting Bot stopped gracefully")
 }
 
-// Container holds all dependencies
+// Container holds all application dependencies
 type Container struct {
-	MeetingRepo         repository.MeetingRepository
-	VoteRepo            repository.VoteRepository
-	UserRepo            repository.UserRepository
-	MeetingService      *service.MeetingService
-	VoteService         *service.VoteService
-	NotificationService *service.NotificationService
-	// BotHandler          *handler.BotHandler
-	Server *server.Server
+	// Repositories
+	MeetingRepo repository.MeetingRepository
+	VoteRepo    repository.VoteRepository
+	UserRepo    repository.UserRepository
+
+	// Services
+	MeetingService *services.MeetingService
+	UserService    *services.UserService
+
+	// Bot
+	Bot *bot.Bot
 }
 
 // initContainer initializes the dependency injection container
-func initContainer(logger *logger.Logger, cfg *config.Config) *Container {
-	logger.InfoS("Initializing dependency container...")
+func initContainer(log *logger.Logger, cfg *config.Config) *Container {
+	log.InfoS("Initializing dependency container...")
 
 	// Initialize repositories (using stubs for now)
+	// TODO: Replace with real PostgreSQL implementations
 	meetingRepo := repository.NewMeetingRepositoryStub()
 	voteRepo := repository.NewVoteRepositoryStub()
 	userRepo := repository.NewUserRepositoryStub()
 
-	logger.InfoS("Repositories initialized (stub mode)")
+	log.InfoS("Repositories initialized (stub mode)")
 
 	// Initialize services
-	meetingService := service.NewMeetingService(meetingRepo, userRepo, voteRepo, logger)
-	voteService := service.NewVoteService(voteRepo, meetingRepo, logger)
-	notificationService := service.NewNotificationService(logger)
+	meetingService := services.NewMeetingService(meetingRepo, userRepo, voteRepo, log)
+	userService := services.NewUserService()
 
-	logger.InfoS("Services initialized")
+	log.InfoS("Services initialized")
 
-	// Initialize handlers
-	// botHandler := handler.NewBotHandler(logger, meetingService, voteService, notificationService)
+	// Initialize bot
+	botInstance, err := bot.NewBot(cfg, log, meetingService, userService)
+	if err != nil {
+		log.ErrorS("Failed to create bot", "error", err)
+		os.Exit(1)
+	}
 
-	logger.InfoS("Handlers initialized")
-
-	// Initialize HTTP server
-	httpServer := server.New(cfg, logger)
-
-	logger.InfoS("HTTP server initialized")
+	log.InfoS("Bot initialized")
 
 	return &Container{
-		MeetingRepo:         meetingRepo,
-		VoteRepo:            voteRepo,
-		UserRepo:            userRepo,
-		MeetingService:      meetingService,
-		VoteService:         voteService,
-		NotificationService: notificationService,
-		// BotHandler:          botHandler,
-		Server: httpServer,
-	}
-}
-
-// startHTTPServer starts the HTTP server
-func startHTTPServer(ctx context.Context, logger *logger.Logger, container *Container, cfg *config.Config) {
-	logger.InfoS("Starting HTTP server",
-		"port", cfg.ServerPort,
-		"address", ":"+cfg.ServerPort,
-	)
-
-	if err := container.Server.Start(); err != nil {
-		logger.ErrorS("Failed to start HTTP server", "error", err)
-		// В реальном приложении здесь может быть graceful degradation
-		// или остановка всего приложения
+		MeetingRepo:    meetingRepo,
+		VoteRepo:       voteRepo,
+		UserRepo:       userRepo,
+		MeetingService: meetingService,
+		UserService:    userService,
+		Bot:            botInstance,
 	}
 }
 
 // waitForShutdown waits for interrupt signal and performs graceful shutdown
-func waitForShutdown(cancel context.CancelFunc) {
+func waitForShutdown(log *logger.Logger, cancel context.CancelFunc, container *Container) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Wait for shutdown signal
 	sig := <-sigChan
-	log.Printf("Received signal: %v. Shutting down...", sig)
+	log.InfoS("Received shutdown signal", "signal", sig.String())
 
-	// Cancel context to stop all goroutines
+	// Cancel context to stop all components
 	cancel()
 
-	// Give some time for graceful shutdown
-	// В реальном приложении здесь можно добавить таймаут
-	// и принудительное завершение если компоненты не останавливаются
-	time.Sleep(2 * time.Second)
+	// Give components time for graceful shutdown
+	shutdownTimeout := 10 * time.Second
+	shutdownComplete := make(chan struct{})
+
+	go func() {
+		// Stop bot
+		if container.Bot != nil {
+			log.InfoS("Stopping bot...")
+			container.Bot.Stop()
+		}
+
+		close(shutdownComplete)
+	}()
+
+	// Wait for graceful shutdown or timeout
+	select {
+	case <-shutdownComplete:
+		log.InfoS("All components stopped gracefully")
+	case <-time.After(shutdownTimeout):
+		log.WarnS("Shutdown timeout exceeded, forcing exit")
+	}
 }

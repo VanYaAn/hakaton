@@ -6,23 +6,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hakaton/meeting-bot/internal/domain"
+	"github.com/hakaton/meeting-bot/internal/models"
 )
 
 type UserRepositoryStub struct {
 	mu     sync.RWMutex
-	users  map[int64]*domain.User
+	users  map[int64]*models.User
 	nextID int64
 }
 
 func NewUserRepositoryStub() *UserRepositoryStub {
 	return &UserRepositoryStub{
-		users:  make(map[int64]*domain.User),
+		users:  make(map[int64]*models.User),
 		nextID: 1,
 	}
 }
 
-func (r *UserRepositoryStub) Create(ctx context.Context, user *domain.User) error {
+func (r *UserRepositoryStub) Create(ctx context.Context, user *models.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -34,7 +34,7 @@ func (r *UserRepositoryStub) Create(ctx context.Context, user *domain.User) erro
 	return nil
 }
 
-func (r *UserRepositoryStub) GetByID(ctx context.Context, id int64) (*domain.User, error) {
+func (r *UserRepositoryStub) GetByID(ctx context.Context, id int64) (*models.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -45,7 +45,7 @@ func (r *UserRepositoryStub) GetByID(ctx context.Context, id int64) (*domain.Use
 	return user, nil
 }
 
-func (r *UserRepositoryStub) GetByMaxUserID(ctx context.Context, maxUserID string) (*domain.User, error) {
+func (r *UserRepositoryStub) GetByMaxUserID(ctx context.Context, maxUserID string) (*models.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
