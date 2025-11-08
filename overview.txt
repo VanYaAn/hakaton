@@ -1,0 +1,63 @@
+HACKATHON OVERVIEW: Productivity Code
+===========================================
+
+Challenge: Develop a service in MAX messenger to improve personal effectiveness
+
+Event Details:
+--------------
+- Organizers: VK Education & MAX messenger
+- Date: November 5, 2025
+- Platform: MAX messenger
+- Audience: 50+ million users (19+ million daily active users)
+
+About MAX Messenger:
+--------------------
+- National messenger available since March 26, 2025
+- Available in RuStore, AppStore, and Google Play
+- Supports Russian and Belarusian SIM cards
+- Growing rapidly with over 50M total users and 19M+ daily users
+
+Opportunity:
+------------
+Be among the first to create chatbots and mini-applications in MAX messenger.
+Create popular and convenient services for work, learning, communication, and life.
+
+Task:
+-----
+Create a WORKING PROTOTYPE of a chatbot or chatbot with mini-application in MAX messenger
+that solves an actual problem for youth audience related to improving productivity.
+
+Key Requirements:
+-----------------
+1. Define target audience and the problem to solve
+2. Design UX and interaction scenarios
+3. Build MVP (Minimum Viable Product) - working chatbot or chatbot with mini-app in MAX
+4. Prepare project presentation
+5. Defend the project before expert jury in Moscow finals
+
+Focus Areas for Productivity Services:
+---------------------------------------
+- Task planning: creating lists, deadline control, calendar integration
+- Motivation: regular reminders, rewards for completed tasks, personalized recommendations
+- Time management: Pomodoro technique, focus improvement, task prioritization
+- Physical health tracking: activity logging, nutrition control, sleep and health monitoring
+- Personal goals: tracking long-term goals like career development or health improvement
+
+Target Users:
+-------------
+- Professionals: project managers, mid/senior level employees, entrepreneurs
+- Students and youth: academic task planning, motivation, physical activity
+- Personal development focused individuals: self-improvement, progress tracking
+- Corporate clients: employee wellbeing and productivity improvement
+
+Market Context:
+---------------
+- Global productivity app market expected to grow from $59.88B (2023) to $149.74B (2030)
+- Popular apps: Todoist (30M users), Trello (50M), Notion (100M+), Headspace (65M), Strava (120M)
+- Russian examples: Mail.ru (50M users in Russia), VK WorkSpace (20K+ corporate clients)
+
+Developer Resources:
+--------------------
+- Developer documentation: https://dev.max.ru/docs/legal/rules
+- Recommended: JavaScript and React (other languages allowed via API)
+- Provided: API token for MAX integration
