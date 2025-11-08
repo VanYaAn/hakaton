@@ -5,9 +5,12 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var Log *zap.Logger
+// Logger
+type Logger struct {
+	*zap.Logger
+}
 
-func InitLogger(debug bool) {
+func NewLogger(debug bool) *Logger {
 	var level zapcore.Level
 	if debug {
 		level = zapcore.DebugLevel
@@ -27,13 +30,53 @@ func InitLogger(debug bool) {
 	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 
 	logger, _ := cfg.Build()
-	Log = logger
+
+	return &Logger{Logger: logger}
 }
 
-/*
+func (l *Logger) InfoS(msg string, keysAndValues ...interface{}) {
+	l.Logger.Info(msg, l.fieldsFromArgs(keysAndValues...)...)
+}
 
- logger.Error("Ошибка бла бла бла", zap.Error(err))
- logger.Info("бла бла бла", zap.String("бла", "бла")) // стринги
- logger.Warn("бла бла бла", zap.String("бла", "бла"))
+func (l *Logger) ErrorS(msg string, keysAndValues ...interface{}) {
+	l.Logger.Error(msg, l.fieldsFromArgs(keysAndValues...)...)
+}
 
-*/
+func (l *Logger) WarnS(msg string, keysAndValues ...interface{}) {
+	l.Logger.Warn(msg, l.fieldsFromArgs(keysAndValues...)...)
+}
+
+func (l *Logger) DebugS(msg string, keysAndValues ...interface{}) {
+	l.Logger.Debug(msg, l.fieldsFromArgs(keysAndValues...)...)
+}
+
+func (l *Logger) FatalS(msg string, keysAndValues ...interface{}) {
+	l.Logger.Fatal(msg, l.fieldsFromArgs(keysAndValues...)...)
+}
+
+func (l *Logger) fieldsFromArgs(keysAndValues ...interface{}) []zap.Field {
+	if len(keysAndValues)%2 != 0 {
+		l.Warn("Odd number of arguments passed to logging method")
+		return []zap.Field{}
+	}
+
+	fields := make([]zap.Field, 0, len(keysAndValues)/2)
+	for i := 0; i < len(keysAndValues); i += 2 {
+		key, ok := keysAndValues[i].(string)
+		if !ok {
+			l.Warn("Non-string key passed to logging method", zap.Any("key", keysAndValues[i]))
+			continue
+		}
+		fields = append(fields, zap.Any(key, keysAndValues[i+1]))
+	}
+
+	return fields
+}
+
+func (l *Logger) WithField(key string, value interface{}) *Logger {
+	return &Logger{Logger: l.Logger.With(zap.Any(key, value))}
+}
+
+func (l *Logger) WithFields(keysAndValues ...interface{}) *Logger {
+	return &Logger{Logger: l.Logger.With(l.fieldsFromArgs(keysAndValues...)...)}
+}
