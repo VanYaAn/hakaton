@@ -21,7 +21,7 @@ func NewLogger(debug bool) *Logger {
 	cfg := zap.Config{
 		Encoding:         "console",
 		Level:            zap.NewAtomicLevelAt(level),
-		OutputPaths:      []string{"stdout", "pkg/logger/app.log"},
+		OutputPaths:      []string{"stdout"},
 		ErrorOutputPaths: []string{"stderr"},
 		EncoderConfig:    zap.NewProductionEncoderConfig(),
 	}

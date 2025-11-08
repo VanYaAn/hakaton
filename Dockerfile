@@ -1,30 +1,35 @@
-# Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:latest AS builder
 
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum* ./
-
-# Download dependencies
-RUN go mod download || true
+# Install dependencies
+COPY go.mod go.sum ./
+RUN go mod download
 
 # Copy source code
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bot ./cmd/bot
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/bot
 
-# Runtime stage
 FROM alpine:latest
 
-WORKDIR /app
+# Установите curl для healthcheck
+RUN apk --no-cache add ca-certificates tzdata curl
 
-# Copy binary from builder
-COPY --from=builder /app/bot .
+WORKDIR /root/
+
+# Copy the pre-built binary
+COPY --from=builder /app/main .
+
+# Create non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Change to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8080
 
-# Run the bot
-CMD ["./bot"]
+# Run the application
+CMD ["./main"]
