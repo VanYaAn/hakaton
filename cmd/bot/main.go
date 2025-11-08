@@ -6,10 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hakaton/meeting-bot/internal/config"
-	"github.com/hakaton/meeting-bot/internal/handler"
+	// "github.com/hakaton/meeting-bot/internal/handler"
 	"github.com/hakaton/meeting-bot/internal/repository"
+	"github.com/hakaton/meeting-bot/internal/server"
 	"github.com/hakaton/meeting-bot/internal/service"
 	"github.com/hakaton/meeting-bot/pkg/logger"
 )
@@ -21,21 +23,20 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 	logger.InfoS("Configuration loaded",
-		"Server port",
-		cfg.ServerPort,
+		"server_port", cfg.ServerPort,
+		"max_api_url", cfg.MaxAPIBaseURL,
+		"voting_duration", cfg.VotingDuration,
 	)
 
 	// Initialize dependencies using Dependency Injection
-	container := initContainer(logger)
+	container := initContainer(logger, cfg)
 
 	// Create context for application
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start the bot
-	if err := runBot(ctx, logger, container, cfg); err != nil {
-		log.Fatalf("Bot failed: %v", err)
-	}
+	// Start HTTP server in goroutine
+	go startHTTPServer(ctx, logger, container, cfg)
 
 	// Wait for shutdown signal
 	waitForShutdown(cancel)
@@ -51,31 +52,37 @@ type Container struct {
 	MeetingService      *service.MeetingService
 	VoteService         *service.VoteService
 	NotificationService *service.NotificationService
-	BotHandler          *handler.BotHandler
+	// BotHandler          *handler.BotHandler
+	Server *server.Server
 }
 
 // initContainer initializes the dependency injection container
-func initContainer(logger *logger.Logger) *Container {
-	logger.InfoS("[DI] Initializing dependency container...")
+func initContainer(logger *logger.Logger, cfg *config.Config) *Container {
+	logger.InfoS("Initializing dependency container...")
 
 	// Initialize repositories (using stubs for now)
 	meetingRepo := repository.NewMeetingRepositoryStub()
 	voteRepo := repository.NewVoteRepositoryStub()
 	userRepo := repository.NewUserRepositoryStub()
 
-	logger.InfoS("[DI] Repositories initialized (stub mode)")
+	logger.InfoS("Repositories initialized (stub mode)")
 
 	// Initialize services
 	meetingService := service.NewMeetingService(meetingRepo, userRepo, voteRepo, logger)
 	voteService := service.NewVoteService(voteRepo, meetingRepo, logger)
 	notificationService := service.NewNotificationService(logger)
 
-	logger.InfoS("[DI] Services initialized")
+	logger.InfoS("Services initialized")
 
 	// Initialize handlers
-	botHandler := handler.NewBotHandler(logger, meetingService, voteService, notificationService)
+	// botHandler := handler.NewBotHandler(logger, meetingService, voteService, notificationService)
 
-	logger.InfoS("[DI] Handlers initialized")
+	logger.InfoS("Handlers initialized")
+
+	// Initialize HTTP server
+	httpServer := server.New(cfg, logger)
+
+	logger.InfoS("HTTP server initialized")
 
 	return &Container{
 		MeetingRepo:         meetingRepo,
@@ -84,55 +91,39 @@ func initContainer(logger *logger.Logger) *Container {
 		MeetingService:      meetingService,
 		VoteService:         voteService,
 		NotificationService: notificationService,
-		BotHandler:          botHandler,
+		// BotHandler:          botHandler,
+		Server: httpServer,
 	}
 }
 
-// runBot starts the bot and processes messages
-func runBot(ctx context.Context, logger *logger.Logger, container *Container, cfg *config.Config) error {
-	logger.DebugS("[BOT] Starting bot with token:", maskToken(cfg.BotToken))
+// startHTTPServer starts the HTTP server
+func startHTTPServer(ctx context.Context, logger *logger.Logger, container *Container, cfg *config.Config) {
+	logger.InfoS("Starting HTTP server",
+		"port", cfg.ServerPort,
+		"address", ":"+cfg.ServerPort,
+	)
 
-	// This is a stub - in production, this would connect to MAX API
-	// and start listening for messages
-
-	// Demo: Process a test command
-	go func() {
-		testCtx := context.Background()
-		response, err := container.BotHandler.HandleMessage(testCtx, "/start", 1)
-		if err != nil {
-			logger.ErrorS("[BOT] Error handling test message", err)
-			return
-		}
-		logger.InfoS("[BOT] Test response", response)
-
-		// Test meeting creation
-		response, err = container.BotHandler.HandleMessage(testCtx, `/create_meeting "Team Sync"`, 1)
-		if err != nil {
-			logger.ErrorS("[BOT] Error creating meeting", err)
-			return
-		}
-		logger.InfoS("[BOT] Meeting creation response", response)
-	}()
-
-	logger.InfoS("[BOT] Bot is running")
-
-	<-ctx.Done()
-	return nil
-}
-
-// maskToken masks the bot token for logging
-func maskToken(token string) string {
-	if len(token) <= 8 {
-		return "****"
+	if err := container.Server.Start(); err != nil {
+		logger.ErrorS("Failed to start HTTP server", "error", err)
+		// В реальном приложении здесь может быть graceful degradation
+		// или остановка всего приложения
 	}
-	return token[:4] + "****" + token[len(token)-4:]
 }
 
-// waitForShutdown waits for interrupt signal
+// waitForShutdown waits for interrupt signal and performs graceful shutdown
 func waitForShutdown(cancel context.CancelFunc) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	<-sigChan
+	// Wait for shutdown signal
+	sig := <-sigChan
+	log.Printf("Received signal: %v. Shutting down...", sig)
+
+	// Cancel context to stop all goroutines
 	cancel()
+
+	// Give some time for graceful shutdown
+	// В реальном приложении здесь можно добавить таймаут
+	// и принудительное завершение если компоненты не останавливаются
+	time.Sleep(2 * time.Second)
 }
