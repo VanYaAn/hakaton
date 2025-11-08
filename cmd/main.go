@@ -1,120 +1,138 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"hakaton/pkg/logger"
-	"io"
-	"net/http"
+	"context"
+	"log"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
-	"go.uber.org/zap"
-	// Импорт клиента
+	"github.com/hakaton/meeting-bot/internal/config"
+	"github.com/hakaton/meeting-bot/internal/handler"
+	"github.com/hakaton/meeting-bot/internal/repository"
+	"github.com/hakaton/meeting-bot/internal/service"
+	"github.com/hakaton/meeting-bot/pkg/logger"
 )
 
-// Logger setup (slog для структурированного логирования)
-// var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-//logger.InitLogger(true)
+func main() {
+	logger := logger.NewLogger(true)
+	logger.InfoS("Starting Meeting Bot...")
 
-// HealthHandler для /health GET — просто 200 OK для nginx
-func HealthHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "OK")
+	// Load configuration
+	cfg := config.Load()
+	logger.InfoS("Configuration loaded",
+		"Server port",
+		cfg.ServerPort,
+	)
+
+	// Initialize dependencies using Dependency Injection
+	container := initContainer(logger)
+
+	// Create context for application
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start the bot
+	if err := runBot(ctx, logger, container, cfg); err != nil {
+		log.Fatalf("Bot failed: %v", err)
+	}
+
+	// Wait for shutdown signal
+	waitForShutdown(cancel)
+
+	logger.InfoS("Meeting Bot stopped")
 }
 
-// WebhookHandler для /webhook/max POST — обработка событий от MAX API
-func WebhookHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Чтение body (без паник)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		logger.Log.Error("Failed to read request body", zap.Error(err))
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	// Парсинг JSON события (предполагаем структуру Event; адаптируй по docs)
-	var event struct {
-		Type    string `json:"type"` // e.g., "message", "update"
-		Payload any    `json:"payload"`
-	}
-	if err := json.Unmarshal(body, &event); err != nil {
-		logger.Log.Error("Failed to unmarshal event", zap.Error(err), zap.String("body", string(body)))
-		http.Error(w, "Invalid event format", http.StatusBadRequest)
-		return
-	}
-
-	// Логируем инцидент
-	logger.Log.Info("Received event", zap.String("type", string(event.Type)), zap.Any("payload", event.Payload))
-
-	// Обработка события (пример: если сообщение, отправить ответ через клиент)
-	if err := processEvent(event); err != nil {
-		logger.Log.Error("Event processing failed", zap.Error(err), zap.String("event type", string(event.Type)))
-		http.Error(w, "Event processing error", http.StatusInternalServerError)
-		return
-	}
-
-	// Успех
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, `{"status": "ok"}`)
+// Container holds all dependencies
+type Container struct {
+	MeetingRepo         repository.MeetingRepository
+	VoteRepo            repository.VoteRepository
+	UserRepo            repository.UserRepository
+	MeetingService      *service.MeetingService
+	VoteService         *service.VoteService
+	NotificationService *service.NotificationService
+	BotHandler          *handler.BotHandler
 }
 
-// processEvent — бизнес-логика (с retry для API-клиента)
-func processEvent(event struct {
-	Type    string `json:"type"`
-	Payload any    `json:"payload"`
-}) error {
-	// Инициализация клиента (токен из env для безопасности)
-	client := maxclient.maxbot.newClient(os.Getenv("MAX_API_TOKEN"))
-	if client == nil {
-		return errors.New("failed to init MAX client")
+// initContainer initializes the dependency injection container
+func initContainer(logger *logger.Logger) *Container {
+	logger.InfoS("[DI] Initializing dependency container...")
+
+	// Initialize repositories (using stubs for now)
+	meetingRepo := repository.NewMeetingRepositoryStub()
+	voteRepo := repository.NewVoteRepositoryStub()
+	userRepo := repository.NewUserRepositoryStub()
+
+	logger.InfoS("[DI] Repositories initialized (stub mode)")
+
+	// Initialize services
+	meetingService := service.NewMeetingService(meetingRepo, userRepo, voteRepo, logger)
+	voteService := service.NewVoteService(voteRepo, meetingRepo, logger)
+	notificationService := service.NewNotificationService(logger)
+
+	logger.InfoS("[DI] Services initialized")
+
+	// Initialize handlers
+	botHandler := handler.NewBotHandler(logger, meetingService, voteService, notificationService)
+
+	logger.InfoS("[DI] Handlers initialized")
+
+	return &Container{
+		MeetingRepo:         meetingRepo,
+		VoteRepo:            voteRepo,
+		UserRepo:            userRepo,
+		MeetingService:      meetingService,
+		VoteService:         voteService,
+		NotificationService: notificationService,
+		BotHandler:          botHandler,
 	}
+}
 
-	// Пример: если тип "message", отправить эхо-ответ с retry
-	if event.Type == "message" {
-		// Адаптируй payload по реальной структуре (e.g., map[string]any)
-		payload, ok := event.Payload.(map[string]interface{})
-		if !ok {
-			return errors.New("invalid payload type")
+// runBot starts the bot and processes messages
+func runBot(ctx context.Context, logger *logger.Logger, container *Container, cfg *config.Config) error {
+	logger.DebugS("[BOT] Starting bot with token:", maskToken(cfg.BotToken))
+
+	// This is a stub - in production, this would connect to MAX API
+	// and start listening for messages
+
+	// Demo: Process a test command
+	go func() {
+		testCtx := context.Background()
+		response, err := container.BotHandler.HandleMessage(testCtx, "/start", 1)
+		if err != nil {
+			logger.ErrorS("[BOT] Error handling test message", err)
+			return
 		}
-		message := payload["text"].(string) // Пример
+		logger.InfoS("[BOT] Test response", response)
 
-		// Retry паттерн (3 попытки с backoff)
-		var lastErr error
-		for attempt := 1; attempt <= 3; attempt++ {
-			err := client.SendMessage(payload["chat_id"].(string), "Echo: "+message) // Метод из клиента; адаптируй
-			if err == nil {
-				logger.Log.Info("Message sent successfully", zap.Int("attempt", attempt))
-				return nil
-			}
-			lastErr = err
-			logger.Log.Warn("Retry on send message", zap.Int("attempt", attempt), zap.Error(err))
-			time.Sleep(time.Second * time.Duration(attempt)) // Exponential backoff
+		// Test meeting creation
+		response, err = container.BotHandler.HandleMessage(testCtx, `/create_meeting "Team Sync"`, 1)
+		if err != nil {
+			logger.ErrorS("[BOT] Error creating meeting", err)
+			return
 		}
-		return fmt.Errorf("failed after retries: %w", lastErr)
-	}
+		logger.InfoS("[BOT] Meeting creation response", response)
+	}()
 
-	// Другие типы событий...
+	logger.InfoS("[BOT] Bot is running")
+
+	<-ctx.Done()
 	return nil
 }
 
-func main() {
-	logger.InitLogger(true)
-	// Настройка сервера
-	http.HandleFunc("/health", HealthHandler)
-	http.HandleFunc("/webhook/max", WebhookHandler)
-
-	// Запуск с логом
-	logger.Log.Info("Starting server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
-		logger.Log.Error("Server failed", zap.Error(err))
-		os.Exit(1)
+// maskToken masks the bot token for logging
+func maskToken(token string) string {
+	if len(token) <= 8 {
+		return "****"
 	}
+	return token[:4] + "****" + token[len(token)-4:]
+}
+
+// waitForShutdown waits for interrupt signal
+func waitForShutdown(cancel context.CancelFunc) {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	<-sigChan
+	cancel()
 }
