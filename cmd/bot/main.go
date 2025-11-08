@@ -11,31 +11,36 @@ import (
 	"github.com/hakaton/meeting-bot/internal/handler"
 	"github.com/hakaton/meeting-bot/internal/repository"
 	"github.com/hakaton/meeting-bot/internal/service"
+	"github.com/hakaton/meeting-bot/pkg/logger"
 )
 
 func main() {
-	log.Println("Starting Meeting Bot...")
+	logger := logger.NewLogger(true)
+	logger.InfoS("Starting Meeting Bot...")
 
 	// Load configuration
 	cfg := config.Load()
-	log.Printf("Configuration loaded. Server port: %s", cfg.ServerPort)
+	logger.InfoS("Configuration loaded",
+		"Server port",
+		cfg.ServerPort,
+	)
 
 	// Initialize dependencies using Dependency Injection
-	container := initContainer()
+	container := initContainer(logger)
 
-	// Create context for graceful shutdown
+	// Create context for application
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start the bot
-	if err := runBot(ctx, container, cfg); err != nil {
+	if err := runBot(ctx, logger, container, cfg); err != nil {
 		log.Fatalf("Bot failed: %v", err)
 	}
 
 	// Wait for shutdown signal
 	waitForShutdown(cancel)
 
-	log.Println("Meeting Bot stopped")
+	logger.InfoS("Meeting Bot stopped")
 }
 
 // Container holds all dependencies
@@ -50,27 +55,27 @@ type Container struct {
 }
 
 // initContainer initializes the dependency injection container
-func initContainer() *Container {
-	log.Println("[DI] Initializing dependency container...")
+func initContainer(logger *logger.Logger) *Container {
+	logger.InfoS("[DI] Initializing dependency container...")
 
 	// Initialize repositories (using stubs for now)
 	meetingRepo := repository.NewMeetingRepositoryStub()
 	voteRepo := repository.NewVoteRepositoryStub()
 	userRepo := repository.NewUserRepositoryStub()
 
-	log.Println("[DI] Repositories initialized (stub mode)")
+	logger.InfoS("[DI] Repositories initialized (stub mode)")
 
 	// Initialize services
-	meetingService := service.NewMeetingService(meetingRepo, userRepo, voteRepo)
+	meetingService := service.NewMeetingService(meetingRepo, userRepo, voteRepo, logger)
 	voteService := service.NewVoteService(voteRepo, meetingRepo)
-	notificationService := service.NewNotificationService()
+	notificationService := service.NewNotificationService(logger)
 
-	log.Println("[DI] Services initialized")
+	logger.InfoS("[DI] Services initialized")
 
 	// Initialize handlers
-	botHandler := handler.NewBotHandler(meetingService, voteService, notificationService)
+	botHandler := handler.NewBotHandler(logger, meetingService, voteService, notificationService)
 
-	log.Println("[DI] Handlers initialized")
+	logger.InfoS("[DI] Handlers initialized")
 
 	return &Container{
 		MeetingRepo:         meetingRepo,
@@ -84,8 +89,8 @@ func initContainer() *Container {
 }
 
 // runBot starts the bot and processes messages
-func runBot(ctx context.Context, container *Container, cfg *config.Config) error {
-	log.Println("[BOT] Starting bot with token:", maskToken(cfg.BotToken))
+func runBot(ctx context.Context, logger *logger.Logger, container *Container, cfg *config.Config) error {
+	logger.DebugS("[BOT] Starting bot with token:", maskToken(cfg.BotToken))
 
 	// This is a stub - in production, this would connect to MAX API
 	// and start listening for messages
@@ -95,21 +100,21 @@ func runBot(ctx context.Context, container *Container, cfg *config.Config) error
 		testCtx := context.Background()
 		response, err := container.BotHandler.HandleMessage(testCtx, "/start", 1)
 		if err != nil {
-			log.Printf("[BOT] Error handling test message: %v", err)
+			logger.ErrorS("[BOT] Error handling test message", err)
 			return
 		}
-		log.Printf("[BOT] Test response: %s", response)
+		logger.InfoS("[BOT] Test response", response)
 
 		// Test meeting creation
 		response, err = container.BotHandler.HandleMessage(testCtx, `/create_meeting "Team Sync"`, 1)
 		if err != nil {
-			log.Printf("[BOT] Error creating meeting: %v", err)
+			logger.ErrorS("[BOT] Error creating meeting", err)
 			return
 		}
-		log.Printf("[BOT] Meeting creation response: %s", response)
+		logger.InfoS("[BOT] Meeting creation response", response)
 	}()
 
-	log.Println("[BOT] Bot is running. Press Ctrl+C to stop.")
+	logger.InfoS("[BOT] Bot is running")
 
 	<-ctx.Done()
 	return nil
@@ -129,6 +134,5 @@ func waitForShutdown(cancel context.CancelFunc) {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	<-sigChan
-	log.Println("\nReceived shutdown signal")
 	cancel()
 }
