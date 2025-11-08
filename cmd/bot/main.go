@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/hakaton/meeting-bot/internal/config"
+	"github.com/hakaton/meeting-bot/internal/handler"
+
 	// "github.com/hakaton/meeting-bot/internal/handler"
 	"github.com/hakaton/meeting-bot/internal/repository"
 	"github.com/hakaton/meeting-bot/internal/server"
@@ -34,6 +37,18 @@ func main() {
 	// Create context for application
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	token := os.Getenv("BOT_TOKEN")
+	if token == "" {
+		fmt.Fprintln(os.Stderr, "Ошибка: переменная окружения TOKEN не установлена")
+		os.Exit(1)
+	}
+
+	// Запускаем бота
+	if err := handler.RunBot(token, ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Бот завершил работу с ошибкой: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Start HTTP server in goroutine
 	go startHTTPServer(ctx, logger, container, cfg)
