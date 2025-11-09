@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hakaton/meeting-bot/internal/pkg/logger"
+	"github.com/hakaton/meeting-bot/internal/logger"
 	"github.com/hakaton/meeting-bot/internal/services"
 	maxbot "github.com/max-messenger/max-bot-api-client-go"
 	"github.com/max-messenger/max-bot-api-client-go/schemes"
