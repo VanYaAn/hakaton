@@ -28,6 +28,7 @@ func main() {
 		"server_port", cfg.ServerPort,
 		"max_api_url", cfg.MaxAPIBaseURL,
 		"voting_duration", cfg.VotingDuration,
+		"db_host", cfg.DatabaseURL,
 	)
 
 	if cfg.BotToken == "" {
@@ -45,7 +46,8 @@ func main() {
 
 	db, err := storage.NewPostgresDB(dbConfig)
 	if err != nil {
-		log.InfoS("Failed to connect to database: %v", err)
+		log.ErrorS("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 

@@ -33,8 +33,9 @@ graph TB
             UserRepo[User Repository<br/>Interface]
         end
 
-        subgraph "Storage"
-            Storage[PostgreSQL Client<br/>Connection Pool]
+        %% БЫЛО: subgraph "Storage" + узел Storage[...]  ← конфликт
+        subgraph StorageLayer["Storage"]
+            PGClient[PostgreSQL Client<br/>Connection Pool]
         end
     end
 
@@ -57,11 +58,11 @@ graph TB
     MeetingService --> VoteRepo
     UserService --> UserRepo
 
-    MeetingRepo --> Storage
-    VoteRepo --> Storage
-    UserRepo --> Storage
+    MeetingRepo --> PGClient
+    VoteRepo --> PGClient
+    UserRepo --> PGClient
 
-    Storage -->|SQL Queries| DB
+    PGClient -->|SQL Queries| DB
 
     Main -->|API Calls| MAX
     MeetingService -->|Send Messages| MAX
