@@ -1,0 +1,4 @@
+*.sum
+*.txt
+*.exe
+/.vscode/
