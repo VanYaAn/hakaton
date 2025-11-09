@@ -28,8 +28,7 @@ type PostgresDB struct {
 }
 
 func NewPostgresDB(cfg Config) (*PostgresDB, error) {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.DBName, cfg.SSLMode)
+	dsn := "postgres://postgres:postgres@db:5432/meetingbot?sslmode=disable" // ИСПРАВИТЬ ТУТ!
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

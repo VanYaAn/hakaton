@@ -52,7 +52,7 @@ func (h *CallbackHandler) Handle(ctx context.Context, upd *schemes.MessageCallba
 		return h.answerCallback(ctx, upd, "❌ Сообщение не найдено")
 	}
 
-	// chatID := upd.Message.Recipient.ChatId
+	chatID := upd.Message.Recipient.ChatId
 
 	// Парсим callback data (формат: "action:param1:param2")
 	parts := strings.Split(callbackData, ":")
@@ -74,6 +74,21 @@ func (h *CallbackHandler) Handle(ctx context.Context, upd *schemes.MessageCallba
 
 	case "close_voting":
 		return h.handleCloseVoting(ctx, upd, parts)
+
+	case "create_meeting":
+		return h.handleCreateMeeting(ctx, chatID, userID)
+
+	case "my_meetings":
+		return h.handleMyMeetings(ctx, chatID, userID)
+
+	case "help":
+		return h.handleHelp(ctx, chatID)
+
+	case "cancel":
+		return h.handleCancel(ctx, chatID, userID)
+
+	case "skip_description":
+		return h.handleSkipDescription(ctx, upd)
 
 	default:
 		return h.answerCallback(ctx, upd, "❌ Неизвестное действие")
@@ -205,30 +220,207 @@ func (h *CallbackHandler) handleCloseVoting(ctx context.Context, upd *schemes.Me
 	return h.answerCallback(ctx, upd, "✅ Голосование закрыто")
 }
 
+// Обработчики для callback-кнопок из клавиатуры
+func (h *CallbackHandler) handleCreateMeeting(ctx context.Context, chatID, userID int64) error {
+	message := `📝 Создание встречи
+
+Шаг 1/3: Введите название встречи
+(или /cancel для отмены)`
+
+	// Создаем клавиатуру с кнопкой отмены
+	keyboard := h.api.Messages.NewKeyboardBuilder()
+	keyboard.
+		AddRow().
+		AddCallback("Отменить", schemes.NEGATIVE, "cancel")
+
+	msg := maxbot.NewMessage().
+		SetChat(chatID).
+		SetText(message).
+		AddKeyboard(keyboard)
+
+	_, err := h.api.Messages.Send(ctx, msg)
+	return err
+}
+
+func (h *CallbackHandler) handleMyMeetings(ctx context.Context, chatID, userID int64) error {
+	meetings, err := h.meetingService.GetUserMeetings(ctx, userID)
+	if err != nil {
+		h.logger.Error("Failed to get user meetings", zap.Error(err))
+		message := "❌ Не удалось получить список встреч."
+
+		keyboard := h.api.Messages.NewKeyboardBuilder()
+		keyboard.
+			AddRow().
+			AddCallback("Повторить", schemes.DEFAULT, "my_meetings")
+
+		msg := maxbot.NewMessage().
+			SetChat(chatID).
+			SetText(message).
+			AddKeyboard(keyboard)
+
+		_, err := h.api.Messages.Send(ctx, msg)
+		return err
+	}
+
+	if len(meetings) == 0 {
+		message := "У вас пока нет встреч. Создайте первую!"
+
+		keyboard := h.api.Messages.NewKeyboardBuilder()
+		keyboard.
+			AddRow().
+			AddCallback("Создать встречу", schemes.POSITIVE, "create_meeting")
+
+		msg := maxbot.NewMessage().
+			SetChat(chatID).
+			SetText(message).
+			AddKeyboard(keyboard)
+
+		_, err := h.api.Messages.Send(ctx, msg)
+		return err
+	}
+
+	// Формируем список встреч
+	message := "📅 Ваши встречи:\n\n"
+	for i, meeting := range meetings {
+		message += fmt.Sprintf("%d. %s\n   ID: %d\n   Статус: %s\n\n",
+			i+1, meeting.Title, meeting.ID, meeting.Status)
+	}
+
+	// Клавиатура для управления встречами
+	keyboard := h.api.Messages.NewKeyboardBuilder()
+	keyboard.
+		AddRow().
+		AddCallback("Обновить", schemes.DEFAULT, "refresh_meetings").
+		AddCallback("Создать новую", schemes.POSITIVE, "create_meeting")
+
+	msg := maxbot.NewMessage().
+		SetChat(chatID).
+		SetText(message).
+		AddKeyboard(keyboard)
+
+	_, err = h.api.Messages.Send(ctx, msg)
+	return err
+}
+
+func (h *CallbackHandler) handleHelp(ctx context.Context, chatID int64) error {
+	message := `📋 Список команд:
+
+/create_meeting - Создать новую встречу
+/my_meetings - Мои встречи
+/cancel - Отменить текущее действие
+
+Для создания встречи я задам вам несколько вопросов:
+1. Название встречи
+2. Описание (необязательно)
+3. Варианты времени для голосования`
+
+	// Создаем клавиатуру с быстрыми командами
+	keyboard := h.api.Messages.NewKeyboardBuilder()
+	keyboard.
+		AddRow().
+		AddCallback("Создать встречу", schemes.POSITIVE, "create_meeting").
+		AddCallback("Мои встречи", schemes.POSITIVE, "my_meetings")
+	keyboard.
+		AddRow().
+		AddLink("Документация", schemes.DEFAULT, "https://example.com/docs")
+
+	msg := maxbot.NewMessage().
+		SetChat(chatID).
+		SetText(message).
+		AddKeyboard(keyboard)
+
+	_, err := h.api.Messages.Send(ctx, msg)
+	return err
+}
+
+func (h *CallbackHandler) handleCancel(ctx context.Context, chatID, userID int64) error {
+	message := "❌ Действие отменено."
+
+	keyboard := h.api.Messages.NewKeyboardBuilder()
+	keyboard.
+		AddRow().
+		AddCallback("Создать встречу", schemes.POSITIVE, "create_meeting").
+		AddCallback("Мои встречи", schemes.POSITIVE, "my_meetings")
+
+	msg := maxbot.NewMessage().
+		SetChat(chatID).
+		SetText(message).
+		AddKeyboard(keyboard)
+
+	_, err := h.api.Messages.Send(ctx, msg)
+	return err
+}
+
+func (h *CallbackHandler) handleSkipDescription(ctx context.Context, upd *schemes.MessageCallbackUpdate) error {
+	// Этот обработчик должен интегрироваться с системой состояний
+	// Пока просто отправляем сообщение
+	message := "✅ Описание пропущено. Введите варианты времени для голосования."
+
+	keyboard := h.api.Messages.NewKeyboardBuilder()
+	keyboard.
+		AddRow().
+		AddCallback("Отменить", schemes.NEGATIVE, "cancel")
+
+	msg := maxbot.NewMessage().
+		SetChat(upd.Message.Recipient.ChatId).
+		SetText(message).
+		AddKeyboard(keyboard)
+
+	_, err := h.api.Messages.Send(ctx, msg)
+
+	// Отвечаем на callback
+	h.answerCallback(ctx, upd, "Описание пропущено")
+	return err
+}
+
 // updateMeetingMessage обновляет сообщение со встречей
 func (h *CallbackHandler) updateMeetingMessage(ctx context.Context, msg *schemes.Message, meetingID int64) error {
-	// // Получаем актуальные данные встречи
-	// meeting, err := h.meetingService.GetMeeting(ctx, meetingID)
-	// if err != nil {
-	// 	return err
-	// }
+	// Получаем актуальные данные встречи
+	meeting, err := h.meetingService.GetMeeting(ctx, meetingID)
+	if err != nil {
+		return err
+	}
 
-	// // Формируем новый текст
-	// text := h.formatMeetingText(meeting)
+	// Формируем новый текст
+	_ = h.formatMeetingText(meeting)
 
-	// // Формируем новые кнопки
-	// buttons := h.createMeetingButtons(meeting)
+	// Создаем клавиатуру с кнопками для голосования
+	keyboard := h.api.Messages.NewKeyboardBuilder()
 
-	// // Обновляем сообщение
+	if meeting.Status == "open" {
+		// Кнопки для голосования
+		for _, slot := range meeting.TimeSlots {
+			votes := len(slot.Votes)
+			buttonText := fmt.Sprintf("📅 %s (%d)", slot.Time.Format("02.01 15:04"), votes)
 
-	// editMsg := maxbot.NewEditMessage().
+			keyboard.
+				AddRow().
+				AddCallback(buttonText, schemes.POSITIVE, fmt.Sprintf("vote:%d:%d", meeting.ID, slot.ID))
+		}
+
+		// Кнопка показа результатов
+		keyboard.
+			AddRow().
+			AddCallback("📊 Показать результаты", schemes.DEFAULT, fmt.Sprintf("show_results:%d", meeting.ID))
+
+		// Кнопка закрытия голосования
+		keyboard.
+			AddRow().
+			AddCallback("🔒 Закрыть голосование", schemes.NEGATIVE, fmt.Sprintf("close_voting:%d", meeting.ID))
+	} else {
+		// Если голосование закрыто
+		keyboard.
+			AddRow().
+			AddCallback("📊 Показать результаты", schemes.DEFAULT, fmt.Sprintf("show_results:%d", meeting.ID))
+	}
+
+	// Обновляем сообщение
+	// editMsg := maxbot.NewMessage().
 	// 	SetMessageId(msg.Body.Mid).
 	// 	SetText(text).
-	// 	SetAttachmentInlineKeyboard(buttons)
+	// 	AddKeyboard(keyboard)
 
 	// _, err = h.api.Messages.Edit(ctx, editMsg)
-	// return err
-
 	return nil
 }
 
@@ -241,6 +433,8 @@ func (h *CallbackHandler) formatMeetingText(meeting *services.Meeting) string {
 
 	if meeting.Status == "closed" {
 		text += "🔒 Голосование завершено\n\n"
+	} else {
+		text += "⏳ Голосование активно\n\n"
 	}
 
 	text += "Результаты голосования:\n"
@@ -259,51 +453,6 @@ func (h *CallbackHandler) formatMeetingText(meeting *services.Meeting) string {
 	}
 
 	return text
-}
-
-// createMeetingButtons создает кнопки для сообщения о встрече
-func (h *CallbackHandler) createMeetingButtons(meeting *services.Meeting) {
-	// var buttons [][]schemes.InlineKeyboardButton
-
-	// if meeting.Status == "open" {
-	// 	// Кнопки для голосования
-	// 	for _, slot := range meeting.TimeSlots {
-	// 		votes := len(slot.Votes)
-	// 		buttonText := fmt.Sprintf("📅 %s (%d)", slot.Time.Format("02.01 15:04"), votes)
-
-	// 		button := schemes.InlineKeyboardButton{
-	// 			Text:         buttonText,
-	// 			CallbackData: fmt.Sprintf("vote:%d:%d", meeting.ID, slot.ID),
-	// 		}
-	// 		buttons = append(buttons, []schemes.InlineKeyboardButton{button})
-	// 	}
-
-	// 	// Кнопка показа результатов
-	// 	buttons = append(buttons, []schemes.InlineKeyboardButton{
-	// 		{
-	// 			Text:         "📊 Показать результаты",
-	// 			CallbackData: fmt.Sprintf("show_results:%d", meeting.ID),
-	// 		},
-	// 	})
-
-	// 	// Кнопка закрытия голосования (только для создателя)
-	// 	buttons = append(buttons, []schemes.InlineKeyboardButton{
-	// 		{
-	// 			Text:         "🔒 Закрыть голосование",
-	// 			CallbackData: fmt.Sprintf("close_voting:%d", meeting.ID),
-	// 		},
-	// 	})
-	// } else {
-	// 	// Если голосование закрыто - только кнопка результатов
-	// 	buttons = append(buttons, []schemes.InlineKeyboardButton{
-	// 		{
-	// 			Text:         "📊 Показать результаты",
-	// 			CallbackData: fmt.Sprintf("show_results:%d", meeting.ID),
-	// 		},
-	// 	})
-	// }
-
-	// return buttons
 }
 
 // formatResults форматирует результаты голосования
@@ -343,8 +492,14 @@ func (h *CallbackHandler) formatResults(results *services.VotingResults) string 
 
 // answerCallback отвечает на callback query
 func (h *CallbackHandler) answerCallback(ctx context.Context, upd *schemes.MessageCallbackUpdate, text string) error {
-	// В Max API может быть метод для ответа на callback
-	// Если его нет, просто логируем
-	h.logger.Info("Callback answer", zap.String("text", text))
+	// В Max API используем метод для ответа на callback
+	// callbackAnswer := maxbot.NewMessage()
+	// 	SetCallbackID(upd.Callback.CallbackID).
+	// 	SetText(text)
+
+	// _, err := h.api.Messages.AnswerCallback(ctx, callbackAnswer)
+	// if err != nil {
+	// 	h.logger.Error("Failed to answer callback", zap.Error(err))
+	// }
 	return nil
 }
