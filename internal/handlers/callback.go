@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hakaton/meeting-bot/internal/pkg/logger"
 	"github.com/hakaton/meeting-bot/internal/services"
-	"github.com/hakaton/meeting-bot/pkg/logger"
 	maxbot "github.com/max-messenger/max-bot-api-client-go"
 	"github.com/max-messenger/max-bot-api-client-go/schemes"
 	"go.uber.org/zap"

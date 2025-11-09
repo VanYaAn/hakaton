@@ -4,7 +4,9 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 
+	"github.com/hakaton/meeting-bot/internal/storage"
 	"github.com/joho/godotenv"
 )
 
@@ -16,8 +18,6 @@ type Config struct {
 	VotingDuration int // Duration in minutes before voting closes
 }
 
-// Load loads configuration from .env file and environment variables
-// .env file values are overridden by actual environment variables
 func Load() *Config {
 	// Загружаем .env файл (если существует)
 	// Игнорируем ошибку, если файл не найден - используем переменные окружения
@@ -68,4 +68,28 @@ func LoadFromPath(path string) *Config {
 		log.Printf("Warning: .env file not found at %s, using environment variables", path)
 	}
 	return Load()
+}
+
+func LoadDatabaseConfig() storage.Config {
+	return storage.Config{
+		Host:            getEnv("DB_HOST", "localhost"),
+		Port:            getEnvInt("DB_PORT", 5432),
+		User:            getEnv("DB_USER", "postgres"),
+		Password:        getEnv("DB_PASSWORD", "postgres"),
+		DBName:          getEnv("DB_NAME", "meetingbot"),
+		SSLMode:         getEnv("DB_SSLMODE", "disable"),
+		MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
+		MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 5),
+		ConnMaxLifetime: getEnvDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+		ConnMaxIdleTime: getEnvDuration("DB_CONN_MAX_IDLE_TIME", 10*time.Minute),
+	}
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
+	}
+	return defaultValue
 }

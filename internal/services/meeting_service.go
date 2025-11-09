@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/hakaton/meeting-bot/internal/models"
+	"github.com/hakaton/meeting-bot/internal/pkg/logger"
 	"github.com/hakaton/meeting-bot/internal/repository"
-	"github.com/hakaton/meeting-bot/pkg/logger"
 )
 
 // Константы для сервиса встреч
