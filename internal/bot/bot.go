@@ -60,22 +60,18 @@ func NewBot(
 	return bot, nil
 }
 
-// Run запускает бота и слушает обновления
 func (b *Bot) Run(ctx context.Context) error {
 	b.logger.Info("Starting bot...")
 
-	// Проверяем авторизацию бота
 	info, err := b.api.Bots.GetBot(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get bot info: %w", err)
 	}
 	b.logger.Info("Bot authenticated", zap.String("name", info.Name))
 
-	// Создаем контекст с отменой для graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Обрабатываем сигналы завершения
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -85,10 +81,8 @@ func (b *Bot) Run(ctx context.Context) error {
 		cancel()
 	}()
 
-	// Основной цикл обработки обновлений
 	b.logger.Info("Bot is running, waiting for updates...")
 	for update := range b.api.GetUpdates(ctx) {
-		// Обрабатываем обновления в отдельных горутинах
 		go b.handleUpdate(ctx, update)
 	}
 
@@ -96,7 +90,6 @@ func (b *Bot) Run(ctx context.Context) error {
 	return nil
 }
 
-// handleUpdate маршрутизирует обновления к соответствующим обработчикам
 func (b *Bot) handleUpdate(ctx context.Context, update interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -126,7 +119,6 @@ func (b *Bot) handleUpdate(ctx context.Context, update interface{}) {
 	}
 }
 
-// handleBotAddedToChat обрабатывает добавление бота в чат
 func (b *Bot) handleBotAddedToChat(ctx context.Context, upd *schemes.BotAddedToChatUpdate) {
 	b.logger.Info("Bot added to chat", zap.Int64("chat_id", upd.ChatId))
 
@@ -139,14 +131,10 @@ func (b *Bot) handleBotAddedToChat(ctx context.Context, upd *schemes.BotAddedToC
 	}
 }
 
-// handleBotRemovedFromChat обрабатывает удаление бота из чата
 func (b *Bot) handleBotRemovedFromChat(ctx context.Context, upd *schemes.BotRemovedFromChatUpdate) {
 	b.logger.Info("Bot removed from chat", zap.Int64("chat_id", upd.ChatId))
-	// Можно очистить данные, связанные с этим чатом
 }
 
-// Stop останавливает бота
 func (b *Bot) Stop() {
 	b.logger.Info("Stopping bot...")
-	// Здесь можно добавить дополнительную логику очистки
 }

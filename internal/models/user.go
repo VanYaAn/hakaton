@@ -4,7 +4,7 @@ import "time"
 
 type User struct {
 	ID        int64
-	MaxUserID string // MAX messenger user ID
+	MaxUserID string
 	Username  string
 	CreatedAt time.Time
 }

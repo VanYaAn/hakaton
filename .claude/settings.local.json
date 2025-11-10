@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(go install:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(echo \"Checking for remaining comments in internal directory...\" find /Users/ivanantoshin/hakaton/internal -name \"*.go\" -exec grep -l \"^[[:space:]]*//\\|^//\" {})",
+      "Bash(find:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(go get:*)"
     ],
     "deny": [],
     "ask": []

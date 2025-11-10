@@ -15,12 +15,10 @@ type Config struct {
 	DatabaseURL    string
 	ServerPort     string
 	MaxAPIBaseURL  string
-	VotingDuration int // Duration in minutes before voting closes
+	VotingDuration int
 }
 
 func Load() *Config {
-	// Загружаем .env файл (если существует)
-	// Игнорируем ошибку, если файл не найден - используем переменные окружения
 	if err := godotenv.Load(); err != nil {
 		log.Printf("Note: .env file not found, using environment variables only")
 	}
@@ -30,11 +28,10 @@ func Load() *Config {
 		DatabaseURL:    getEnv("DATABASE_URL", "postgres://localhost/meetingbot?sslmode=disable"),
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
 		MaxAPIBaseURL:  getEnv("MAX_API_BASE_URL", "https://api.max.ru"),
-		VotingDuration: getEnvInt("VOTING_DURATION", 120), // 2 hours default
+		VotingDuration: getEnvInt("VOTING_DURATION", 120),
 	}
 }
 
-// mustGetEnv returns environment variable or panics if not set
 func mustGetEnv(key string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -43,7 +40,6 @@ func mustGetEnv(key string) string {
 	return value
 }
 
-// getEnv returns environment variable or default value
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -51,7 +47,6 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// getEnvInt returns environment variable as integer or default value
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
@@ -62,7 +57,6 @@ func getEnvInt(key string, defaultValue int) int {
 	return defaultValue
 }
 
-// LoadFromPath loads configuration from specific .env file path
 func LoadFromPath(path string) *Config {
 	if err := godotenv.Load(path); err != nil {
 		log.Printf("Warning: .env file not found at %s, using environment variables", path)
@@ -71,7 +65,6 @@ func LoadFromPath(path string) *Config {
 }
 
 func LoadDatabaseConfig() storage.Config {
-	// If DATABASE_URL is set, parse it and use those values as defaults
 	host := "localhost"
 	port := 5432
 	user := "postgres"
@@ -80,7 +73,6 @@ func LoadDatabaseConfig() storage.Config {
 	sslmode := "disable"
 
 	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		// Parse DATABASE_URL: postgres://user:pass@host:port/dbname?sslmode=disable
 		if parsed := parseDatabaseURL(dbURL); parsed != nil {
 			if parsed.Host != "" {
 				host = parsed.Host
@@ -103,7 +95,6 @@ func LoadDatabaseConfig() storage.Config {
 		}
 	}
 
-	// Individual env vars override DATABASE_URL
 	return storage.Config{
 		Host:            getEnv("DB_HOST", host),
 		Port:            getEnvInt("DB_PORT", port),
@@ -119,8 +110,6 @@ func LoadDatabaseConfig() storage.Config {
 }
 
 func parseDatabaseURL(dbURL string) *storage.Config {
-	// Simple parser for postgres://user:pass@host:port/dbname?sslmode=disable
-	// Remove postgres:// prefix
 	if len(dbURL) < 11 || dbURL[:11] != "postgres://" {
 		return nil
 	}
@@ -128,7 +117,6 @@ func parseDatabaseURL(dbURL string) *storage.Config {
 
 	cfg := &storage.Config{}
 
-	// Extract user:pass@host:port/dbname?params
 	atIndex := -1
 	for i := 0; i < len(dbURL); i++ {
 		if dbURL[i] == '@' {
@@ -138,7 +126,6 @@ func parseDatabaseURL(dbURL string) *storage.Config {
 	}
 
 	if atIndex > 0 {
-		// Extract user:pass
 		userPass := dbURL[:atIndex]
 		colonIndex := -1
 		for i := 0; i < len(userPass); i++ {
@@ -156,7 +143,6 @@ func parseDatabaseURL(dbURL string) *storage.Config {
 		dbURL = dbURL[atIndex+1:]
 	}
 
-	// Extract host:port/dbname?params
 	slashIndex := -1
 	for i := 0; i < len(dbURL); i++ {
 		if dbURL[i] == '/' {
@@ -185,7 +171,6 @@ func parseDatabaseURL(dbURL string) *storage.Config {
 		dbURL = dbURL[slashIndex+1:]
 	}
 
-	// Extract dbname?params
 	questionIndex := -1
 	for i := 0; i < len(dbURL); i++ {
 		if dbURL[i] == '?' {
@@ -197,7 +182,6 @@ func parseDatabaseURL(dbURL string) *storage.Config {
 	if questionIndex > 0 {
 		cfg.DBName = dbURL[:questionIndex]
 		params := dbURL[questionIndex+1:]
-		// Parse sslmode
 		if len(params) > 8 && params[:8] == "sslmode=" {
 			cfg.SSLMode = params[8:]
 		}

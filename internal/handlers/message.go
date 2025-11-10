@@ -12,26 +12,21 @@ import (
 	"go.uber.org/zap"
 )
 
-// MessageHandler обрабатывает текстовые сообщения
 type MessageHandler struct {
 	api            *maxbot.Api
 	logger         *logger.Logger
 	meetingService *services.MeetingService
 	userService    *services.UserService
 
-	// Хранилище состояний пользователей (для многошаговых диалогов)
-	// В продакшене использовать Redis или базу данных
 	userStates map[int64]*UserState
 }
 
-// UserState хранит состояние диалога с пользователем
 type UserState struct {
 	CurrentCommand string
 	Step           int
 	Data           map[string]interface{}
 }
 
-// NewMessageHandler создает новый обработчик сообщений
 func NewMessageHandler(
 	api *maxbot.Api,
 	logger *logger.Logger,
@@ -47,7 +42,6 @@ func NewMessageHandler(
 	}
 }
 
-// Handle обрабатывает входящее сообщение
 func (h *MessageHandler) Handle(ctx context.Context, upd *schemes.MessageCreatedUpdate) error {
 	chatID := upd.Message.Recipient.ChatId
 	userID := upd.Message.Sender.UserId
@@ -59,21 +53,17 @@ func (h *MessageHandler) Handle(ctx context.Context, upd *schemes.MessageCreated
 		zap.String("text", text),
 	)
 
-	// Проверяем, есть ли активное состояние диалога
 	if state, exists := h.userStates[userID]; exists {
 		return h.handleStateMessage(ctx, upd, state)
 	}
 
-	// Обрабатываем команды
 	if strings.HasPrefix(text, "/") {
 		return h.handleCommand(ctx, upd)
 	}
 
-	// Обычное сообщение без контекста
 	return h.sendMessage(ctx, chatID, "Я не понял. Используйте /help для списка команд.")
 }
 
-// handleCommand обрабатывает команды бота
 func (h *MessageHandler) handleCommand(ctx context.Context, upd *schemes.MessageCreatedUpdate) error {
 	chatID := upd.Message.Recipient.ChatId
 	userID := upd.Message.Sender.UserId
@@ -100,9 +90,7 @@ func (h *MessageHandler) handleCommand(ctx context.Context, upd *schemes.Message
 	}
 }
 
-// handleStart обрабатывает команду /start
 func (h *MessageHandler) handleStart(ctx context.Context, chatID, userID int64) error {
-	// Регистрируем пользователя в системе
 	if err := h.userService.RegisterUser(ctx, userID, chatID); err != nil {
 		h.logger.Error("Failed to register user", zap.Error(err))
 	}
@@ -116,7 +104,6 @@ func (h *MessageHandler) handleStart(ctx context.Context, chatID, userID int64) 
 
 Используйте /help для списка команд.`
 
-	// Создаем клавиатуру с основными командами
 	keyboard := h.api.Messages.NewKeyboardBuilder()
 	keyboard.
 		AddRow().
@@ -129,7 +116,6 @@ func (h *MessageHandler) handleStart(ctx context.Context, chatID, userID int64) 
 	return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 }
 
-// handleHelp обрабатывает команду /help
 func (h *MessageHandler) handleHelp(ctx context.Context, chatID int64) error {
 	message := `📋 Список команд:
 
@@ -142,7 +128,6 @@ func (h *MessageHandler) handleHelp(ctx context.Context, chatID int64) error {
 2. Описание (необязательно)
 3. Варианты времени для голосования`
 
-	// Создаем клавиатуру с быстрыми командами
 	keyboard := h.api.Messages.NewKeyboardBuilder()
 	keyboard.
 		AddRow().
@@ -150,14 +135,12 @@ func (h *MessageHandler) handleHelp(ctx context.Context, chatID int64) error {
 		AddCallback("Мои встречи", schemes.POSITIVE, "my_meetings")
 	keyboard.
 		AddRow().
-		AddLink("Документация", schemes.DEFAULT, "https://example.com/docs")
+		AddLink("Документация", schemes.DEFAULT, "Https:")
 
 	return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 }
 
-// handleCreateMeeting начинает процесс создания встречи
 func (h *MessageHandler) handleCreateMeeting(ctx context.Context, chatID, userID int64) error {
-	// Создаем состояние диалога
 	h.userStates[userID] = &UserState{
 		CurrentCommand: "create_meeting",
 		Step:           1,
@@ -169,7 +152,6 @@ func (h *MessageHandler) handleCreateMeeting(ctx context.Context, chatID, userID
 Шаг 1/3: Введите название встречи
 (или /cancel для отмены)`
 
-	// Клавиатура с кнопкой отмены
 	keyboard := h.api.Messages.NewKeyboardBuilder()
 	keyboard.
 		AddRow().
@@ -178,13 +160,15 @@ func (h *MessageHandler) handleCreateMeeting(ctx context.Context, chatID, userID
 	return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 }
 
-// handleStateMessage обрабатывает сообщения в контексте многошагового диалога
-func (h *MessageHandler) handleStateMessage(ctx context.Context, upd *schemes.MessageCreatedUpdate, state *UserState) error {
+func (h *MessageHandler) handleStateMessage(
+	ctx context.Context,
+	upd *schemes.MessageCreatedUpdate,
+	state *UserState,
+) error {
 	chatID := upd.Message.Recipient.ChatId
 	userID := upd.Message.Sender.UserId
 	text := upd.Message.Body.Text
 
-	// Проверка на отмену
 	if text == "/cancel" {
 		delete(h.userStates, userID)
 		return h.sendMessage(ctx, chatID, "❌ Действие отменено.")
@@ -199,14 +183,17 @@ func (h *MessageHandler) handleStateMessage(ctx context.Context, upd *schemes.Me
 	}
 }
 
-// handleCreateMeetingStep обрабатывает шаги создания встречи
-func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schemes.MessageCreatedUpdate, state *UserState) error {
+func (h *MessageHandler) handleCreateMeetingStep(
+	ctx context.Context,
+	upd *schemes.MessageCreatedUpdate,
+	state *UserState,
+) error {
 	chatID := upd.Message.Recipient.ChatId
 	userID := upd.Message.Sender.UserId
 	text := upd.Message.Body.Text
 
 	switch state.Step {
-	case 1: // Название встречи
+	case 1:
 		state.Data["title"] = text
 		state.Step = 2
 
@@ -221,7 +208,7 @@ func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schem
 
 		return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 
-	case 2: // Описание
+	case 2:
 		if text != "пропустить" {
 			state.Data["description"] = text
 		}
@@ -242,8 +229,7 @@ func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schem
 
 		return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 
-	case 3: // Варианты времени
-		// Парсим варианты времени
+	case 3:
 		timeSlots, err := h.parseTimeSlots(text)
 		if err != nil {
 			return h.sendMessage(ctx, chatID,
@@ -252,7 +238,6 @@ func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schem
 
 		state.Data["time_slots"] = timeSlots
 
-		// Создаем встречу через сервис
 		meeting, err := h.meetingService.CreateMeeting(ctx, &services.CreateMeetingRequest{
 			Title:       state.Data["title"].(string),
 			Description: getStringOrEmpty(state.Data, "description"),
@@ -267,10 +252,8 @@ func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schem
 			return h.sendMessage(ctx, chatID, "❌ Не удалось создать встречу. Попробуйте позже.")
 		}
 
-		// Очищаем состояние
 		delete(h.userStates, userID)
 
-		// Отправляем сообщение с результатом
 		return h.sendMeetingCreated(ctx, chatID, meeting)
 
 	default:
@@ -279,7 +262,6 @@ func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schem
 	}
 }
 
-// handleMyMeetings показывает встречи пользователя
 func (h *MessageHandler) handleMyMeetings(ctx context.Context, chatID, userID int64) error {
 	meetings, err := h.meetingService.GetUserMeetings(ctx, userID)
 	if err != nil {
@@ -298,14 +280,12 @@ func (h *MessageHandler) handleMyMeetings(ctx context.Context, chatID, userID in
 		return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 	}
 
-	// Формируем список встреч
 	message := "📅 Ваши встречи:\n\n"
 	for i, meeting := range meetings {
 		message += fmt.Sprintf("%d. %s\n   ID: %d\n   Статус: %s\n\n",
 			i+1, meeting.Title, meeting.ID, meeting.Status)
 	}
 
-	// Клавиатура для управления встречами
 	keyboard := h.api.Messages.NewKeyboardBuilder()
 	keyboard.
 		AddRow().
@@ -315,7 +295,6 @@ func (h *MessageHandler) handleMyMeetings(ctx context.Context, chatID, userID in
 	return h.sendMessageWithKeyboard(ctx, chatID, message, keyboard)
 }
 
-// handleCancel отменяет текущее действие
 func (h *MessageHandler) handleCancel(ctx context.Context, chatID, userID int64) error {
 	if _, exists := h.userStates[userID]; exists {
 		delete(h.userStates, userID)
@@ -324,7 +303,6 @@ func (h *MessageHandler) handleCancel(ctx context.Context, chatID, userID int64)
 	return h.sendMessage(ctx, chatID, "Нет активных действий для отмены.")
 }
 
-// sendMessage отправляет текстовое сообщение
 func (h *MessageHandler) sendMessage(ctx context.Context, chatID int64, text string) error {
 	msg := maxbot.NewMessage().SetChat(chatID).SetText(text)
 	_, err := h.api.Messages.Send(ctx, msg)
@@ -335,8 +313,12 @@ func (h *MessageHandler) sendMessage(ctx context.Context, chatID int64, text str
 	return nil
 }
 
-// sendMessageWithKeyboard отправляет сообщение с клавиатурой
-func (h *MessageHandler) sendMessageWithKeyboard(ctx context.Context, chatID int64, text string, keyboard *maxbot.Keyboard) error {
+func (h *MessageHandler) sendMessageWithKeyboard(
+	ctx context.Context,
+	chatID int64,
+	text string,
+	keyboard *maxbot.Keyboard,
+) error {
 	msg := maxbot.NewMessage().
 		SetChat(chatID).
 		SetText(text).
@@ -350,7 +332,6 @@ func (h *MessageHandler) sendMessageWithKeyboard(ctx context.Context, chatID int
 	return nil
 }
 
-// sendMeetingCreated отправляет сообщение о созданной встрече с кнопками для голосования
 func (h *MessageHandler) sendMeetingCreated(ctx context.Context, chatID int64, meeting *services.Meeting) error {
 	text := fmt.Sprintf(`✅ Встреча создана!
 
@@ -359,13 +340,11 @@ func (h *MessageHandler) sendMeetingCreated(ctx context.Context, chatID int64, m
 
 Участники могут проголосовать за удобное время.`, meeting.Title, meeting.Description)
 
-	// Создаем клавиатуру для голосования
 	keyboard := h.api.Messages.NewKeyboardBuilder()
 
-	// Добавляем кнопки для каждого временного слота
 	for i, slot := range meeting.TimeSlots {
 		if i%2 == 0 && i > 0 {
-			keyboard.AddRow() // Новая строка каждые 2 кнопки
+			keyboard.AddRow()
 		}
 		keyboard.AddRow().AddCallback(
 			fmt.Sprintf("📅 %s", slot.Time.Format("02.01 15:04")),
@@ -374,15 +353,13 @@ func (h *MessageHandler) sendMeetingCreated(ctx context.Context, chatID int64, m
 		)
 	}
 
-	// Добавляем дополнительные кнопки управления
 	keyboard.AddRow().
 		AddCallback("Поделиться встречей", schemes.DEFAULT, fmt.Sprintf("share:%d", meeting.ID)).
-		AddLink("Календарь", schemes.DEFAULT, "https://calendar.example.com")
+		AddLink("Календарь", schemes.DEFAULT, "https:")
 
 	return h.sendMessageWithKeyboard(ctx, chatID, text, keyboard)
 }
 
-// parseTimeSlots парсит строку с вариантами времени
 func (h *MessageHandler) parseTimeSlots(text string) ([]string, error) {
 	lines := strings.Split(text, "\n")
 	var slots []string
@@ -401,7 +378,6 @@ func (h *MessageHandler) parseTimeSlots(text string) ([]string, error) {
 	return slots, nil
 }
 
-// getStringOrEmpty безопасно получает строку из map
 func getStringOrEmpty(m map[string]interface{}, key string) string {
 	if val, ok := m[key]; ok {
 		if str, ok := val.(string); ok {

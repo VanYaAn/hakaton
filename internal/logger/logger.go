@@ -5,7 +5,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// Logger
 type Logger struct {
 	*zap.Logger
 }
@@ -35,23 +34,23 @@ func NewLogger(debug bool) *Logger {
 }
 
 func (l *Logger) InfoS(msg string, keysAndValues ...interface{}) {
-	l.Logger.Info(msg, l.fieldsFromArgs(keysAndValues...)...)
+	l.Info(msg, l.fieldsFromArgs(keysAndValues...)...)
 }
 
 func (l *Logger) ErrorS(msg string, keysAndValues ...interface{}) {
-	l.Logger.Error(msg, l.fieldsFromArgs(keysAndValues...)...)
+	l.Error(msg, l.fieldsFromArgs(keysAndValues...)...)
 }
 
 func (l *Logger) WarnS(msg string, keysAndValues ...interface{}) {
-	l.Logger.Warn(msg, l.fieldsFromArgs(keysAndValues...)...)
+	l.Warn(msg, l.fieldsFromArgs(keysAndValues...)...)
 }
 
 func (l *Logger) DebugS(msg string, keysAndValues ...interface{}) {
-	l.Logger.Debug(msg, l.fieldsFromArgs(keysAndValues...)...)
+	l.Debug(msg, l.fieldsFromArgs(keysAndValues...)...)
 }
 
 func (l *Logger) FatalS(msg string, keysAndValues ...interface{}) {
-	l.Logger.Fatal(msg, l.fieldsFromArgs(keysAndValues...)...)
+	l.Fatal(msg, l.fieldsFromArgs(keysAndValues...)...)
 }
 
 func (l *Logger) fieldsFromArgs(keysAndValues ...interface{}) []zap.Field {
@@ -74,9 +73,9 @@ func (l *Logger) fieldsFromArgs(keysAndValues ...interface{}) []zap.Field {
 }
 
 func (l *Logger) WithField(key string, value interface{}) *Logger {
-	return &Logger{Logger: l.Logger.With(zap.Any(key, value))}
+	return &Logger{Logger: l.With(zap.Any(key, value))}
 }
 
 func (l *Logger) WithFields(keysAndValues ...interface{}) *Logger {
-	return &Logger{Logger: l.Logger.With(l.fieldsFromArgs(keysAndValues...)...)}
+	return &Logger{Logger: l.With(l.fieldsFromArgs(keysAndValues...)...)}
 }
