@@ -1,0 +1,19 @@
+# Go Dependencies (go.mod format)
+# This project uses Go modules for dependency management
+# See go.mod and go.sum for exact versions
+
+# Main dependencies:
+github.com/lib/pq v1.10.9
+
+# Build requirements:
+- Go 1.21 or higher
+- Docker 20.10+ (for containerization)
+- Docker Compose 2.0+ (for local development)
+
+# Runtime requirements:
+- PostgreSQL 15+ (for production database)
+- Alpine Linux (for Docker container)
+
+# Development tools (optional):
+- golangci-lint (for linting)
+- air (for hot reload during development)
