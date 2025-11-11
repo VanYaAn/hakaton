@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 	"time"
@@ -16,18 +17,41 @@ type MeetingRepositoryStub struct {
 	participants map[int64][]*models.MeetingParticipant
 	timeSlots    map[int64][]*models.TimeSlot
 	nextID       int64
+	db           *sql.DB
 }
 
-func NewMeetingRepositoryStub() *MeetingRepositoryStub {
+func NewMeetingRepositoryStub(db *sql.DB) *MeetingRepositoryStub {
 	return &MeetingRepositoryStub{
 		meetings:     make(map[int64]*models.Meeting),
 		participants: make(map[int64][]*models.MeetingParticipant),
 		timeSlots:    make(map[int64][]*models.TimeSlot),
 		nextID:       1,
+		db:           db,
 	}
 }
 
 func (r *MeetingRepositoryStub) Create(ctx context.Context, meeting *models.Meeting) error {
+
+	if r.db != nil {
+		query := `
+			INSERT INTO meetings (title, organizer_id, chat_id, status, final_time)
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, created_at;
+		`
+		err := r.db.QueryRowContext(ctx, query,
+			meeting.Title,
+			meeting.OrganizerID,
+			meeting.ChatID,
+			meeting.Status,
+			meeting.FinalTime,
+		).Scan(&meeting.ID, &meeting.CreatedAt)
+		if err != nil {
+			return fmt.Errorf("failed to insert meeting: %w", err)
+		}
+		meeting.UpdatedAt = meeting.CreatedAt
+		return nil
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -94,9 +118,20 @@ func (r *MeetingRepositoryStub) GetParticipants(ctx context.Context, meetingID i
 	return participants, nil
 }
 
+// func (r *MeetingRepositoryStub) AddTimeSlot(ctx context.Context, slot *models.TimeSlot) error {
+// 	r.mu.Lock()
+// 	defer r.mu.Unlock()
+
+// 	r.timeSlots[slot.MeetingID] = append(r.timeSlots[slot.MeetingID], slot)
+// 	return nil
+// }
+
 func (r *MeetingRepositoryStub) AddTimeSlot(ctx context.Context, slot *models.TimeSlot) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// Присваиваем уникальный ID слоту
+	slot.ID = int64(len(r.timeSlots[slot.MeetingID]) + 1)
 
 	r.timeSlots[slot.MeetingID] = append(r.timeSlots[slot.MeetingID], slot)
 	return nil

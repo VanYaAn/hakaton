@@ -192,6 +192,7 @@ func (h *MessageHandler) handleStateMessage(ctx context.Context, upd *schemes.Me
 
 	switch state.CurrentCommand {
 	case "create_meeting":
+		h.logger.Info("зашли в кейс handleStateMessage")
 		return h.handleCreateMeetingStep(ctx, upd, state)
 	default:
 		delete(h.userStates, userID)
@@ -244,14 +245,16 @@ func (h *MessageHandler) handleCreateMeetingStep(ctx context.Context, upd *schem
 
 	case 3: // Варианты времени
 		// Парсим варианты времени
+		h.logger.Info("Parse text to timeslot")
 		timeSlots, err := h.parseTimeSlots(text)
 		if err != nil {
+			h.logger.Error("Failed to Parse text to timeslot", zap.Error(err))
 			return h.sendMessage(ctx, chatID,
 				fmt.Sprintf("❌ Ошибка в формате времени: %v\nПопробуйте еще раз.", err))
 		}
 
 		state.Data["time_slots"] = timeSlots
-
+		h.logger.Info("Failed to Parse text to timeslot")
 		// Создаем встречу через сервис
 		meeting, err := h.meetingService.CreateMeeting(ctx, &services.CreateMeetingRequest{
 			Title:       state.Data["title"].(string),
@@ -352,15 +355,58 @@ func (h *MessageHandler) sendMessageWithKeyboard(ctx context.Context, chatID int
 
 // sendMeetingCreated отправляет сообщение о созданной встрече с кнопками для голосования
 func (h *MessageHandler) sendMeetingCreated(ctx context.Context, chatID int64, meeting *services.Meeting) error {
+
+	if meeting == nil {
+		if h.logger != nil {
+			h.logger.Error("meeting is nil")
+		}
+		return fmt.Errorf("meeting is nil")
+	}
+
+	if h.api == nil {
+		if h.logger != nil {
+			h.logger.Error("api is nil")
+		}
+		return fmt.Errorf("api is nil")
+	}
+
+	if h.api.Messages == nil {
+		if h.logger != nil {
+			h.logger.Error("api.Messages is nil")
+		}
+		return fmt.Errorf("api.Messages is nil")
+	}
+
+	if meeting.TimeSlots == nil {
+		if h.logger != nil {
+			h.logger.Error("meeting.TimeSlots is nil")
+		}
+		return fmt.Errorf("time slots are nil")
+	}
+
+	// <- Вставляем проверку здесь
+	if meeting.TimeSlots == nil || len(meeting.TimeSlots) == 0 {
+		if h.logger != nil {
+			h.logger.Error("meeting.TimeSlots is nil or empty")
+		}
+		return fmt.Errorf("time slots are nil or empty")
+	}
+
 	text := fmt.Sprintf(`✅ Встреча создана!
 
 📋 %s
-📝 %s
+📋 %s
 
 Участники могут проголосовать за удобное время.`, meeting.Title, meeting.Description)
 
 	// Создаем клавиатуру для голосования
 	keyboard := h.api.Messages.NewKeyboardBuilder()
+	// Временный защитный механизм: если билдер клавиатуры по какой-то причине вернул nil,
+	// отправляем простое сообщение без клавиатуры, чтобы избежать паники.
+	if keyboard == nil {
+		h.logger.Warn("keyboard builder returned nil, sending message without keyboard")
+		return h.sendMessage(ctx, chatID, text)
+	}
 
 	// Добавляем кнопки для каждого временного слота
 	for i, slot := range meeting.TimeSlots {

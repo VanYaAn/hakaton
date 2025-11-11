@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 	"time"
@@ -13,16 +14,19 @@ type UserRepositoryStub struct {
 	mu     sync.RWMutex
 	users  map[int64]*models.User
 	nextID int64
+	db     *sql.DB
 }
 
-func NewUserRepositoryStub() *UserRepositoryStub {
+func NewUserRepositoryStub(db *sql.DB) *UserRepositoryStub {
 	return &UserRepositoryStub{
 		users:  make(map[int64]*models.User),
 		nextID: 1,
+		db:     db,
 	}
 }
 
 func (r *UserRepositoryStub) Create(ctx context.Context, user *models.User) error {
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

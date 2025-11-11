@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,12 +37,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	container := initContainer(log, cfg)
-	log.InfoS("Dependency container initialized")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	dbConfig := config.LoadDatabaseConfig()
 
 	db, err := storage.NewPostgresDB(dbConfig)
@@ -50,8 +45,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-
 	log.InfoS("Successfully connected to database!")
+
+	container := initContainer(log, cfg, db.DB)
+	log.InfoS("Dependency container initialized")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	go startHTTPServer(ctx, log, container, cfg)
 
@@ -85,14 +85,14 @@ type Container struct {
 }
 
 // initContainer initializes the dependency injection container
-func initContainer(log *logger.Logger, cfg *config.Config) *Container {
+func initContainer(log *logger.Logger, cfg *config.Config, db *sql.DB) *Container {
 	log.InfoS("Initializing dependency container...")
 
 	// Initialize repositories (using stubs for now)
 	// TODO: Replace with real PostgreSQL implementations
-	meetingRepo := repository.NewMeetingRepositoryStub()
-	voteRepo := repository.NewVoteRepositoryStub()
-	userRepo := repository.NewUserRepositoryStub()
+	meetingRepo := repository.NewMeetingRepositoryStub(db)
+	voteRepo := repository.NewVoteRepositoryStub(db)
+	userRepo := repository.NewUserRepositoryStub(db)
 
 	log.InfoS("Repositories initialized (stub mode)")
 

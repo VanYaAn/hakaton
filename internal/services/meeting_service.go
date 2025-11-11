@@ -8,6 +8,7 @@ import (
 	"github.com/hakaton/meeting-bot/internal/logger"
 	"github.com/hakaton/meeting-bot/internal/models"
 	"github.com/hakaton/meeting-bot/internal/repository"
+	"go.uber.org/zap"
 )
 
 // Константы для сервиса встреч
@@ -94,76 +95,98 @@ type TimeSlotResult struct {
 
 // CreateMeeting создает новую встречу
 func (s *MeetingService) CreateMeeting(ctx context.Context, req *CreateMeetingRequest) (*Meeting, error) {
-	// s.logger.Info("Creating meeting",
-	// 	zap.String("title", req.Title),
-	// 	zap.Int64("creator_id", req.CreatorID),
-	// 	zap.Int64("chat_id", req.ChatID),
-	// 	zap.Int("time_slots_count", len(req.TimeSlots)))
 
-	// // Парсим временные слоты
-	// timeSlots := make([]TimeSlot, 0, len(req.TimeSlots))
-	// for i, timeStr := range req.TimeSlots {
-	// 	parsedTime, err := time.Parse("2006-01-02 15:04", timeStr)
-	// 	if err != nil {
-	// 		s.logger.Error("Failed to parse time slot",
-	// 			zap.Int("slot_index", i),
-	// 			zap.String("time_str", timeStr),
-	// 			zap.Error(err))
-	// 		return nil, fmt.Errorf("invalid time format: %s", timeStr)
-	// 	}
-	// 	timeSlots = append(timeSlots, TimeSlot{
-	// 		ID:    int64(i + 1),
-	// 		Time:  parsedTime,
-	// 		Votes: []Vote{},
-	// 	})
+	// meeting, err := h.meetingService.CreateMeeting(ctx, &services.CreateMeetingRequest{
+	// 	Title:       state.Data["title"].(string),
+	// 	Description: getStringOrEmpty(state.Data, "description"),
+	// 	TimeSlots:   timeSlots,
+	// 	CreatorID:   userID,
+	// 	ChatID:      chatID,
+	// })
+
+	s.logger.Info("Creating meeting",
+		zap.String("title", req.Title),
+		zap.String("description", req.Description),
+		zap.Int("time_slots_count", len(req.TimeSlots)),
+		zap.Int64("creator_id", req.CreatorID),
+		zap.Int64("chat_id", req.ChatID),
+	)
+
+	// Парсим временные слоты
+	timeSlots := make([]TimeSlot, 0, len(req.TimeSlots))
+	for i, timeStr := range req.TimeSlots {
+		parsedTime, err := time.Parse("2006-01-02 15:04", timeStr)
+		if err != nil {
+			s.logger.Error("Failed to parse time slot",
+				zap.Int("slot_index", i),
+				zap.String("time_str", timeStr),
+				zap.Error(err))
+			return nil, fmt.Errorf("invalid time format: %s", timeStr)
+		}
+		timeSlots = append(timeSlots, TimeSlot{
+			ID:    int64(i + 1),
+			Time:  parsedTime,
+			Votes: []Vote{},
+		})
+	}
+
+	// Создаем встречу в базе
+	meeting := &models.Meeting{
+		Title:       req.Title,
+		ChatID:      req.ChatID,
+		OrganizerID: req.CreatorID,
+		Status:      MeetingStatusOpen,
+	}
+
+	// type Meeting struct {
+	// 	ID          int64
+	// 	ChatID      int64
+	// 	Title       string
+	// 	OrganizerID int64
+	// 	Status      models.MeetingStatus
+	// 	FinalTime   *time.Time
+	// 	CreatedAt   time.Time
+	// 	UpdatedAt   time.Time
 	// }
 
-	// // Создаем встречу в базе
-	// meeting := &models.Meeting{
-	// 	Title:       req.Title,
-	// 	Status:      MeetingStatusOpen,
-	// 	OrganizerID: req.CreatorID,
-	// 	ChatID:      req.ChatID,
-	// }
+	if err := s.meetingRepo.Create(ctx, meeting); err != nil {
+		s.logger.Error("Failed to create meeting", zap.Error(err))
+		return nil, fmt.Errorf("failed to create meeting: %w", err)
+	}
 
-	// if err := s.meetingRepo.Create(ctx, meeting); err != nil {
-	// 	s.logger.Error("Failed to create meeting", zap.Error(err))
-	// 	return nil, fmt.Errorf("failed to create meeting: %w", err)
-	// }
+	// Добавляем временные слоты
+	for i, slot := range timeSlots {
+		dbSlot := &models.TimeSlot{
+			MeetingID: meeting.ID, // отсутствует нахуй
+			StartTime: slot.Time,
+			EndTime:   slot.Time.Add(time.Hour), // По умолчанию 1 час
+		}
+		if err := s.meetingRepo.AddTimeSlot(ctx, dbSlot); err != nil {
+			s.logger.Error("Failed to add time slot",
+				zap.Int64("meeting_id", meeting.ID),
+				zap.Int("slot_index", i),
+				zap.Error(err))
+			// Продолжаем добавлять остальные слоты
+		} else {
+			timeSlots[i].ID = dbSlot.ID
+		}
+	}
 
-	// // Добавляем временные слоты
-	// for i, slot := range timeSlots {
-	// 	dbSlot := &models.TimeSlot{
-	// 		MeetingID: meeting.ID,
-	// 		StartTime: slot.Time,
-	// 		EndTime:   slot.Time.Add(time.Hour), // По умолчанию 1 час
-	// 	}
-	// 	if err := s.meetingRepo.AddTimeSlot(ctx, dbSlot); err != nil {
-	// 		s.logger.Error("Failed to add time slot",
-	// 			zap.Int64("meeting_id", meeting.ID),
-	// 			zap.Int("slot_index", i),
-	// 			zap.Error(err))
-	// 		// Продолжаем добавлять остальные слоты
-	// 	} else {
-	// 		timeSlots[i].ID = dbSlot.ID
-	// 	}
-	// }
+	s.logger.Info("Meeting created successfully",
+		zap.Int64("meeting_id", meeting.ID),
+		zap.String("title", meeting.Title))
 
-	// s.logger.Info("Meeting created successfully",
-	// 	zap.Int64("meeting_id", meeting.ID),
-	// 	zap.String("title", meeting.Title))
+	return &Meeting{
+		ID:        meeting.ID,
+		Title:     meeting.Title,
+		Status:    meeting.Status,
+		CreatorID: meeting.OrganizerID,
+		ChatID:    meeting.ChatID,
+		TimeSlots: timeSlots,
+		CreatedAt: meeting.CreatedAt,
+	}, nil
 
-	// return &Meeting{
-	// 	ID:        meeting.ID,
-	// 	Title:     meeting.Title,
-	// 	Status:    meeting.Status,
-	// 	CreatorID: meeting.OrganizerID,
-	// 	ChatID:    meeting.ChatID,
-	// 	TimeSlots: timeSlots,
-	// 	CreatedAt: meeting.CreatedAt,
-	// }, nil
-
-	return nil, nil
+	//return nil, nil
 }
 
 // GetMeeting получает встречу с деталями

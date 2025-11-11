@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 
@@ -12,12 +13,14 @@ type VoteRepositoryStub struct {
 	mu     sync.RWMutex
 	votes  map[int64]*models.Vote
 	nextID int64
+	db     *sql.DB
 }
 
-func NewVoteRepositoryStub() *VoteRepositoryStub {
+func NewVoteRepositoryStub(db *sql.DB) *VoteRepositoryStub {
 	return &VoteRepositoryStub{
 		votes:  make(map[int64]*models.Vote),
 		nextID: 1,
+		db:     db,
 	}
 }
 
